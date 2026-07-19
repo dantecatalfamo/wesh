@@ -64,6 +64,7 @@ let nextInodeId = 1;
 
 // at is an optional parameter
 function getInode(uid, gid, path, at) {
+    console.log("getInode path", path);
     if (path[0] != "/" && at === undefined) {
         throw `cannot read ${path}: not absolute and no "at"`;
     }
@@ -173,7 +174,7 @@ function basename(path) {
 function dirname(path) {
     const first = path[0] === "/" ? "/" : "";
     const sp = splitPath(path);
-    return first + sp.slice(1).join("/");
+    return first + sp.slice(0, sp.length-1).join("/");
 }
 
 function write(uid, gid, contents, path, at) {
@@ -203,6 +204,8 @@ function read(uid, gid, path, at) {
 function create(uid, gid, mode, path, at) {
     const base = basename(path);
     const dir = dirname(path);
+    console.log("create base", base);
+    console.log("create dir", dir);
     const parentInode = getInode(uid, gid, dir, at);
     if (!permCheck(uid, gid, parentInode, new Perm(false, true, false))) {
         throw `permission denied: cannot write to dir ${path}`
