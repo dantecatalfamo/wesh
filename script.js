@@ -260,7 +260,7 @@ class Shell {
                 this.output += `${e}=${this.env[e]}\n`;
             }
             break;
-        case "ls":
+        case "ls": {
             const inode = getInode(this.uid, this.gid, this.cwd);
             const dir = readDir(inode);
             for (const f of dir) {
@@ -268,10 +268,25 @@ class Shell {
                 this.output += `${i.type === typeDir ? "d" : " "}${i.mode.toString()} ${f.name}: ${f.id}\n`;
             }
             break;
-        case "cd":
+        }
+        case "cd": {
             const path = this.input.replace(/cd\s+/,'');
             this.cd(path);
             break;
+        }
+        case "cat": {
+            const path = resolvePath(this.cwd, this.input.replace(/cat\s+/,''));
+            this.output = read(this.uid, this.gid, path);
+            break;
+        }
+        case "mkdir": {
+            const path = resolvePath(this.cwd, this.input.replace(/mkdir\s+/,''));
+            mkdir(this.uid, this.gid, defaultMode, path);
+            break;
+        }
+        case "pwd": {
+            this.output = this.cwd;
+        }
         default:
             break;
         }
@@ -305,6 +320,10 @@ const rl = require('readline').createInterface({
 
 // Fires every time a newline character (\n) is detected
 rl.on('line', (line) => {
-    shell.eval(line);
+    try {
+        shell.eval(line);
+    } catch (e) {
+        console.error(e);
+    }
     console.log(shell.output);
 });
