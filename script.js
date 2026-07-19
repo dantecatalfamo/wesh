@@ -1,5 +1,7 @@
 "use strict";
 
+/// File IO
+
 const typeReg = "file";
 const typeDir = "dir";
 
@@ -16,6 +18,9 @@ class Perm {
         this.w = write;
         this.x = execute;
     }
+    toString() {
+        return `${this.r ? "r" : "-"}${this.w ? "w" : "-"}${this.x ? "x" : "-"}`
+    }
 }
 
 class Mode {
@@ -23,6 +28,9 @@ class Mode {
         this.userPerm = userPerm;
         this.groupPerm = groupPerm;
         this.worldPerm = worldPerm;
+    }
+    toString() {
+        return `${this.userPerm.toString()}${this.groupPerm.toString()}${this.worldPerm.toString()}`
     }
 }
 
@@ -220,6 +228,64 @@ function putInodeKV(id, inode) {
     mockKV[id] = inode;
 }
 
+function resolvePath(orig, path) {
+    if (path[0] === "/") {
+        return path;
+    }
+    if (orig === "/") {
+        return "/"+path;
+    }
+    return orig+"/"+path;
+}
+
+/// Shell
+class Shell {
+    constructor() {
+        this.env = {
+        };
+        this.uid = 0;
+        this.gid = 0;
+        this.cwd = "/";
+        this.at = 0;
+        this.input = "";
+        this.output = "";
+    }
+    eval(input) {
+        this.env.cwd = this.cwd;
+        this.output = "";
+        this.input = input;
+        switch(input.split(/\s+/)[0]) {
+        case "env":
+            for (const e in this.env) {
+                this.output += `${e}=${this.env[e]}\n`;
+            }
+            break;
+        case "ls":
+            const inode = getInode(this.uid, this.gid, this.cwd);
+            const dir = readDir(inode);
+            for (const f of dir) {
+                const i = getInodeKV(f.id);
+                this.output += `${i.type === typeDir ? "d" : " "}${i.mode.toString()} ${f.name}: ${f.id}\n`;
+            }
+            break;
+        case "cd":
+            const path = this.input.replace(/cd\s+/,'');
+            this.cd(path);
+            break;
+        default:
+            break;
+        }
+    }
+    cd(path) {
+        const inode = getInode(this.uid, this.gid, path, this.at);
+        if (inode.type !== typeDir) {
+            throw `cannot change to ${path}: type ${inode.type}`;
+        }
+        this.cwd = resolvePath(this.cwd, path);
+        this.at = inode.id;
+    }
+}
+
 console.log(getInode(0, 0, "/"));
 mkdir(0, 0, defaultMode, "/hee");
 console.log(getInode(0, 0, "/"));
@@ -228,3 +294,16 @@ console.log(getInode(0, 0, "/"));
 console.log(mockKV);
 write(0, 0, "test", "/frog");
 console.log(read(0, 0, "/frog"));
+const shell = new Shell();
+
+// node specific
+const rl = require('readline').createInterface({
+  input: process.stdin,
+  output: process.stdout
+});
+
+// Fires every time a newline character (\n) is detected
+rl.on('line', (line) => {
+    shell.eval(line);
+    console.log(shell.output);
+});
