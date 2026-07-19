@@ -1,0 +1,167 @@
+"use strict";
+
+const typeReg = "file";
+const typeDir = "dir";
+
+class DirEnt {
+    constructor(name, id) {
+        this.name = name;
+        this.id = id;
+    }
+}
+
+class Perm {
+    constructor(read, write, execute) {
+        this.r = read;
+        this.w = write;
+        this.x = execute;
+    }
+}
+
+class Mode {
+    constructor(userPerm, groupPerm, worldPerm) {
+        this.userPerm = userPerm;
+        this.groupPerm = groupPerm;
+        this.worldPerm = worldPerm;
+    }
+}
+
+class Inode {
+    constructor(id, type, mode, uid, gid) {
+        this.id = id;
+        this.type = type;
+        this.uid = uid;
+        this.gid = gid;
+        this.mode = mode;
+        this.contents = ""
+    }
+}
+
+const defaultMode = new Mode(
+    new Perm(true, true, true),
+    new Perm(true, false, true),
+    new Perm(true, false, true)
+)
+
+// test kv is just an object
+const rootInode = new Inode(0, typeDir, defaultMode, 0, 0);
+rootInode.contents = "[]";
+const mockKV = {
+    0: rootInode,
+};
+let nextInodeId = 1;
+
+// at is an optional parameter
+function getInode(uid, gid, path, at) {
+    if (path[0] != "/" && at === undefined) {
+        throw `cannot read ${path}: not absolute and no "at"`
+    }
+    const root = getInodeKV(at ? at : 0); // start at or root is always 0
+
+    if (!permCheck(uid, gid, root, new Perm(true, false, true))) {
+        throw `cannot read/execute at path ${path}`
+    }
+    if (root.type != typeDir) {
+        throw `cannot read dir ${path} at ${at}, not a directory. type ${root.type}`
+    }
+
+    const sp = splitPath(path);
+    let inode = root;
+    for (const name of sp) {
+        if (permCheck(uid, gid, inode, new Perm(true, false, true))) {
+            throw `cannot read/execute at path ${path} at ${at}`
+        }
+        if (inode.type != typeDir) {
+            throw `cannot read dir ${path} at ${at}, not a directory. type ${root.type}`
+        }
+
+        const dirEnts = readDir(inode);
+        const match = dirEnts.find(e => e.name === name);
+        if (!match) {
+            throw `no file or directory: ${name} in ${path}`
+        }
+    }
+
+    return inode;
+}
+
+function permCheck(uid, gid, inode, wantPerm) {
+    let canR = false;
+    let canW = false;
+    let canX = false;
+
+    if (uid === inode.uid) {
+        canR = inode.mode.userPerm.r;
+        canW = inode.mode.userPerm.w;
+        canX = inode.mode.userPerm.x;
+    }
+    if (gid === inode.gid) {
+        canR ||= inode.mode.groupPerm.r;
+        canW ||= inode.mode.groupPerm.w;
+        canX ||= inode.mode.groupPerm.x;
+    }
+    canR ||= inode.mode.worldPerm.r;
+    canW ||= inode.mode.worldPerm.w;
+    canX ||= inode.mode.worldPerm.x;
+
+    let goodR = wantPerm.r ? canR : true;
+    let goodW = wantPerm.w ? canW : true;
+    let goodX = wantPerm.x ? canX : true;
+
+    return goodR && goodW && goodX;
+}
+
+function readDir(inode) {
+    return JSON.parse(inode.contents)
+}
+
+function writeDir(inode, dirEnts) {
+    inode.contents = JSON.stringify(dirEnts)
+}
+
+function mkdir(uid, gid, mode, name, path, at) {
+    const parentInode = getInode(uid, gid, path, at);
+    if (!permCheck(uid, gid, parentInode, new Perm(false, true, false))) {
+        throw `permission denied: cannot write to ${path}`
+    }
+    const newDirInode = new Inode(nextInodeId++, typeDir, mode, uid, gid);
+    newDirInode.contents = "[]";
+    putInodeKV(newDirInode.id, newDirInode);
+
+    let dirEnts = readDir(parentInode);
+    dirEnts.unshift(new DirEnt(name, newDirInode.id));
+    writeDir(parentInode, dirEnts);
+}
+
+// split path into pieces
+function splitPath(path) {
+    if (path.includes("\n")) {
+        throw `invalid path contains newline`
+    }
+    return path.split("/").filter(e => e.length);
+}
+
+function write(uid, gid, path, at) {
+    const inode = getInode(uid, gid, path, at);
+    if (!permCheck(uid, gid, inode, new Perm(false, true, false))) {
+        throw `permission denied: cannot write to ${path}`
+    }
+}
+
+function read(uid, gid, path, at) {
+
+}
+
+function create(uid, gid, path, at) {
+
+}
+
+function getInodeKV(id) {
+    return mockKV[id];
+}
+
+function putInodeKV(id, inode) {
+    mockKV[id] = inode;
+}
+
+console.log(getInode(0, 0, "/"));
