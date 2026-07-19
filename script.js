@@ -43,6 +43,9 @@ class Inode {
         this.mode = mode;
         this.contents = ""
     }
+    size() {
+        return this.contents.length
+    }
 }
 
 const defaultMode = new Mode(
@@ -265,7 +268,7 @@ class Shell {
             const dir = readDir(inode);
             for (const f of dir) {
                 const i = getInodeKV(f.id);
-                this.output += `${i.type === typeDir ? "d" : " "}${i.mode.toString()} ${f.name}: ${f.id}\n`;
+                this.output += `${i.type === typeDir ? "d" : " "}${i.mode.toString()} ${i.uid} ${i.gid} ${i.size()} ${f.name}\n`;
             }
             break;
         }
@@ -304,12 +307,15 @@ class Shell {
 
 console.log(getInode(0, 0, "/"));
 mkdir(0, 0, defaultMode, "/hee");
+create(0, 0, defaultMode, "/hee/another");
+write(0, 0, "another one", "/hee/another");
 console.log(getInode(0, 0, "/"));
 create(0, 0, defaultMode, "/frog");
 console.log(getInode(0, 0, "/"));
 console.log(mockKV);
 write(0, 0, "test", "/frog");
 console.log(read(0, 0, "/frog"));
+
 const shell = new Shell();
 
 // node specific
