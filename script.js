@@ -54,32 +54,36 @@ let nextInodeId = 1;
 // at is an optional parameter
 function getInode(uid, gid, path, at) {
     if (path[0] != "/" && at === undefined) {
-        throw `cannot read ${path}: not absolute and no "at"`
+        throw `cannot read ${path}: not absolute and no "at"`;
     }
     const root = getInodeKV(at ? at : 0); // start at or root is always 0
 
     if (!permCheck(uid, gid, root, new Perm(true, false, true))) {
-        throw `cannot read/execute at path ${path}`
+        throw `cannot read/execute at path root ${root}`;
     }
     if (root.type != typeDir) {
-        throw `cannot read dir ${path} at ${at}, not a directory. type ${root.type}`
+        throw `cannot read dir ${path}, not a directory. type ${root.type}`;
     }
 
     const sp = splitPath(path);
     let inode = root;
-    for (const name of sp) {
-        if (permCheck(uid, gid, inode, new Perm(true, false, true))) {
-            throw `cannot read/execute at path ${path} at ${at}`
+    for (const nameIdx in sp) {
+        const name = sp[nameIdx];
+        const last = nameIdx === sp.length-1;
+
+        if (last || !permCheck(uid, gid, inode, new Perm(true, false, true))) {
+            throw `cannot read/execute at path ${path}`;
         }
-        if (inode.type != typeDir) {
-            throw `cannot read dir ${path} at ${at}, not a directory. type ${root.type}`
+        if (last || inode.type != typeDir) {
+            throw `cannot read dir ${path}, not a directory. type ${root.type}`;
         }
 
         const dirEnts = readDir(inode);
         const match = dirEnts.find(e => e.name === name);
         if (!match) {
-            throw `no file or directory: ${name} in ${path}`
+            throw `no file or directory: ${name} in ${path}`;
         }
+        inode = getInodeKV(match.id);
     }
 
     return inode;
@@ -119,41 +123,93 @@ function writeDir(inode, dirEnts) {
     inode.contents = JSON.stringify(dirEnts)
 }
 
-function mkdir(uid, gid, mode, name, path, at) {
-    const parentInode = getInode(uid, gid, path, at);
+function mkdir(uid, gid, mode, path, at) {
+    const base = basename(path);
+    const dir = dirname(path);
+    const parentInode = getInode(uid, gid, dir, at);
     if (!permCheck(uid, gid, parentInode, new Perm(false, true, false))) {
-        throw `permission denied: cannot write to ${path}`
+        throw `permission denied: cannot write to ${path}`;
     }
+    if (parentInode.type != typeDir) {
+        throw `cannot create a directory under a file`;
+    }
+    let dirEnts = readDir(parentInode);
+    if (dirEnts.find(e => e.name === base)) {
+        throw `directory already exists: ${path}`;
+    }
+
     const newDirInode = new Inode(nextInodeId++, typeDir, mode, uid, gid);
     newDirInode.contents = "[]";
     putInodeKV(newDirInode.id, newDirInode);
 
-    let dirEnts = readDir(parentInode);
-    dirEnts.unshift(new DirEnt(name, newDirInode.id));
+    dirEnts.unshift(new DirEnt(base, newDirInode.id));
     writeDir(parentInode, dirEnts);
 }
 
 // split path into pieces
 function splitPath(path) {
     if (path.includes("\n")) {
-        throw `invalid path contains newline`
+        throw `invalid path contains newline`;
     }
     return path.split("/").filter(e => e.length);
 }
 
-function write(uid, gid, path, at) {
+function basename(path) {
+    const sp = splitPath(path);
+    return sp[sp.length-1];
+}
+
+function dirname(path) {
+    const first = path[0] === "/" ? "/" : "";
+    const sp = splitPath(path);
+    return first + sp.slice(1).join("/");
+}
+
+function write(uid, gid, contents, path, at) {
     const inode = getInode(uid, gid, path, at);
-    if (!permCheck(uid, gid, inode, new Perm(false, true, false))) {
-        throw `permission denied: cannot write to ${path}`
+    if (inode.type !== typeReg) {
+        throw `cannot write to ${inode.type}`;
     }
+    if (!permCheck(uid, gid, inode, new Perm(false, true, false))) {
+        throw `permission denied: cannot write to ${path}`;
+    }
+
+    inode.contents = contents;
 }
 
 function read(uid, gid, path, at) {
+    const inode = getInode(uid, gid, path, at);
+    if (inode.type !== typeReg) {
+        throw `cannot write to ${inode.type}`;
+    }
+    if (!permCheck(uid, gid, inode, new Perm(true, false, false))) {
+        throw `permission denied: cannot read ${path}`;
+    }
 
+    return inode.contents;
 }
 
-function create(uid, gid, path, at) {
+function create(uid, gid, mode, path, at) {
+    const base = basename(path);
+    const dir = dirname(path);
+    const parentInode = getInode(uid, gid, dir, at);
+    if (!permCheck(uid, gid, parentInode, new Perm(false, true, false))) {
+        throw `permission denied: cannot write to dir ${path}`
+    }
+    if (parentInode.type !== typeDir) {
+        throw `cannot create node under ${parentInode.type}`;
+    }
 
+    let dirEnts = readDir(parentInode);
+    if (dirEnts.find(e => e.name === base)) {
+        throw `file already exists: ${path}`;
+    }
+
+    const newInode = new Inode(nextInodeId++, typeReg, mode, uid, gid);
+    putInodeKV(newInode.id, newInode);
+
+    dirEnts.unshift(new DirEnt(base, newInode.id));
+    writeDir(parentInode, dirEnts);
 }
 
 function getInodeKV(id) {
@@ -165,3 +221,10 @@ function putInodeKV(id, inode) {
 }
 
 console.log(getInode(0, 0, "/"));
+mkdir(0, 0, defaultMode, "/hee");
+console.log(getInode(0, 0, "/"));
+create(0, 0, defaultMode, "/frog");
+console.log(getInode(0, 0, "/"));
+console.log(mockKV);
+write(0, 0, "test", "/frog");
+console.log(read(0, 0, "/frog"));
