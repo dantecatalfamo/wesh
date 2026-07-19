@@ -277,11 +277,12 @@ class Shell {
         }
     }
     cd(path) {
-        const inode = getInode(this.uid, this.gid, path, this.at);
+        const newPath = resolvePath(this.cwd, path);
+        const inode = getInode(this.uid, this.gid, newPath);
         if (inode.type !== typeDir) {
             throw `cannot change to ${path}: type ${inode.type}`;
         }
-        this.cwd = resolvePath(this.cwd, path);
+        this.cwd = newPath;
         this.at = inode.id;
     }
 }
