@@ -268,12 +268,14 @@ class Shell {
         this.at = 0;
         this.input = "";
         this.output = "";
+        this.args = [];
     }
     eval(input) {
         this.env.cwd = this.cwd;
         this.output = "";
         this.input = input;
-        switch(input.split(/\s+/)[0]) {
+        this.args = splitToArgs(this.input);
+        switch(this.args[0]) {
         case "env":
             for (const e in this.env) {
                 this.output += `${e}=${this.env[e]}\n`;
@@ -289,17 +291,17 @@ class Shell {
             break;
         }
         case "cd": {
-            const path = this.input.replace(/cd\s+/,'');
+            const path = this.args[1];
             this.cd(path);
             break;
         }
         case "cat": {
-            const path = resolvePath(this.cwd, this.input.replace(/cat\s+/,''));
+            const path = resolvePath(this.cwd, this.args[1]);
             this.output = read(this.uid, this.gid, path);
             break;
         }
         case "mkdir": {
-            const path = resolvePath(this.cwd, this.input.replace(/mkdir\s+/,''));
+            const path = resolvePath(this.cwd, this.args[1]);
             mkdir(this.uid, this.gid, defaultMode, path);
             break;
         }
@@ -308,16 +310,16 @@ class Shell {
             break;
         }
         case "echo": {
-            this.output = this.input.replace(/echo\s+/, '');
+            this.output = this.args.slice(1).join(" ");
             break;
         }
         case "realpath": {
-            const path = resolvePath(this.cwd, this.input.replace(/realpath\s*/,''));
+            const path = resolvePath(this.cwd, this.args[1]);
             this.output = path;
             break;
         }
         default:
-            throw `command not found "${this.input}"`;
+            throw `command not found "${this.args[0]}"`;
             break;
         }
     }
@@ -331,6 +333,19 @@ class Shell {
         this.at = inode.id;
     }
 }
+
+function splitToArgs(input) {
+  // Regex matches double-quoted strings, single-quoted strings, or unquoted text
+  const regex = /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|([^\s']+)/g;
+  const matches = [...input.matchAll(regex)];
+
+  return matches.map(match => {
+    if (match[1] !== undefined) return match[1].replace(/\\"/g, '"'); // Double quoted
+    if (match[2] !== undefined) return match[2].replace(/\\'/g, "'"); // Single quoted
+    return match[3]; // Unquoted
+  });
+}
+
 
 console.log(getInode(0, 0, "/"));
 mkdir(0, 0, defaultMode, "/hee");
