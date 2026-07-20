@@ -271,7 +271,7 @@ class Shell {
         this.args = [];
     }
     eval(input) {
-        this.env.pwd = this.cwd;
+        this.env.PWD = this.cwd;
         this.output = "";
         this.input = input;
         this.args = splitToArgs(this.input, this.env);
