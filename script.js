@@ -233,14 +233,14 @@ function putInodeKV(id, inode) {
     mockKV[id] = inode;
 }
 
-function resolvePath(orig, path) {
+function resolvePath(cwd, path) {
     if (path[0] === "/") {
         return resolvePathDots(path);
     }
-    if (orig === "/") {
+    if (cwd === "/") {
         return resolvePathDots("/"+path);
     }
-    return resolvePathDots(orig+"/"+path);
+    return resolvePathDots(cwd+"/"+path);
 }
 
 function resolvePathDots(path) {
