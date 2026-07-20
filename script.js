@@ -235,12 +235,27 @@ function putInodeKV(id, inode) {
 
 function resolvePath(orig, path) {
     if (path[0] === "/") {
-        return path;
+        return resolvePathDots(path);
     }
     if (orig === "/") {
-        return "/"+path;
+        return resolvePathDots("/"+path);
     }
-    return orig+"/"+path;
+    return resolvePathDots(orig+"/"+path);
+}
+
+function resolvePathDots(path) {
+    console.log("resolvePathDots", path);
+    const first = path[0] === "/" ? "/" : "";
+    const sp = splitPath(path);
+    while (sp.includes("..")) {
+        const dd = sp.indexOf("..");
+        if (dd !== 0) {
+            sp.splice(dd-1, 2);
+        } else {
+            sp.shift();
+        }
+    }
+    return first+sp.filter(e => e !== ".").join("/");
 }
 
 /// Shell
@@ -291,6 +306,12 @@ class Shell {
         }
         case "pwd": {
             this.output = this.cwd;
+            break;
+        }
+        case "realpath": {
+            const path = resolvePath(this.cwd, this.input.replace(/realpath\s*/,''));
+            this.output = path;
+            break;
         }
         default:
             break;
