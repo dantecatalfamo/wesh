@@ -261,8 +261,7 @@ function resolvePathDots(path) {
 /// Shell
 class Shell {
     constructor() {
-        this.env = {
-        };
+        this.env = {};
         this.uid = 0;
         this.gid = 0;
         this.cwd = "/";
@@ -308,12 +307,17 @@ class Shell {
             this.output = this.cwd;
             break;
         }
+        case "echo": {
+            this.output = this.input.replace(/echo\s+/, '');
+            break;
+        }
         case "realpath": {
             const path = resolvePath(this.cwd, this.input.replace(/realpath\s*/,''));
             this.output = path;
             break;
         }
         default:
+            throw `command not found "${this.input}"`;
             break;
         }
     }
