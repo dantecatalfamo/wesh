@@ -64,7 +64,6 @@ let nextInodeId = 1;
 
 // at is an optional parameter
 function getInode(uid, gid, path, at) {
-    console.log("getInode path", path);
     if (path[0] != "/" && at === undefined) {
         throw `cannot read ${path}: not absolute and no "at"`;
     }
@@ -192,7 +191,7 @@ function write(uid, gid, contents, path, at) {
 function read(uid, gid, path, at) {
     const inode = getInode(uid, gid, path, at);
     if (inode.type !== typeReg) {
-        throw `cannot write to ${inode.type}`;
+        throw `cannot read ${inode.type}`;
     }
     if (!permCheck(uid, gid, inode, new Perm(true, false, false))) {
         throw `permission denied: cannot read ${path}`;
@@ -323,9 +322,11 @@ const shell = new Shell();
 
 // node specific
 const rl = require('readline').createInterface({
-  input: process.stdin,
-  output: process.stdout
+    input: process.stdin,
+    output: process.stdout
 });
+
+rl.prompt();
 
 // Fires every time a newline character (\n) is detected
 rl.on('line', (line) => {
@@ -335,4 +336,5 @@ rl.on('line', (line) => {
         console.error(e);
     }
     console.log(shell.output);
+    rl.prompt();
 });
