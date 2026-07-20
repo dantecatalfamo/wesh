@@ -271,10 +271,10 @@ class Shell {
         this.args = [];
     }
     eval(input) {
-        this.env.cwd = this.cwd;
+        this.env.pwd = this.cwd;
         this.output = "";
         this.input = input;
-        this.args = splitToArgs(this.input);
+        this.args = splitToArgs(this.input, this.env);
         switch(this.args[0]) {
         case "env":
             for (const e in this.env) {
@@ -334,19 +334,19 @@ class Shell {
     }
 }
 
-function splitToArgs(input) {
+function splitToArgs(input, env) {
     // Regex matches double-quoted strings, single-quoted strings, or unquoted text
     const regex = /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|([^\s']+)/g;
     const matches = [...input.matchAll(regex)];
 
     return matches.map(match => {
-        if (match[1] !== undefined) return match[1].replace(/\\"/g, '"'); // Double quoted
+        if (match[1] !== undefined) return substituteShellVariables(match[1].replace(/\\"/g, '"'), env); // Double quoted
         if (match[2] !== undefined) return match[2].replace(/\\'/g, "'"); // Single quoted
-        return match[3]; // Unquoted
+        return substituteShellVariables(match[3], env); // Unquoted
     });
 }
 
-function substituteShellVariables(inputString, env = {}) {
+function substituteShellVariables(inputString, env) {
     // Regex to match either ${VAR} or $VAR
     const regex = /\$(?:\{([\w-]+)\}|([\w-]+))/g;
 
