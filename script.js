@@ -335,15 +335,29 @@ class Shell {
 }
 
 function splitToArgs(input) {
-  // Regex matches double-quoted strings, single-quoted strings, or unquoted text
-  const regex = /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|([^\s']+)/g;
-  const matches = [...input.matchAll(regex)];
+    // Regex matches double-quoted strings, single-quoted strings, or unquoted text
+    const regex = /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|([^\s']+)/g;
+    const matches = [...input.matchAll(regex)];
 
-  return matches.map(match => {
-    if (match[1] !== undefined) return match[1].replace(/\\"/g, '"'); // Double quoted
-    if (match[2] !== undefined) return match[2].replace(/\\'/g, "'"); // Single quoted
-    return match[3]; // Unquoted
-  });
+    return matches.map(match => {
+        if (match[1] !== undefined) return match[1].replace(/\\"/g, '"'); // Double quoted
+        if (match[2] !== undefined) return match[2].replace(/\\'/g, "'"); // Single quoted
+        return match[3]; // Unquoted
+    });
+}
+
+function substituteShellVariables(inputString, env = {}) {
+    // Regex to match either ${VAR} or $VAR
+    const regex = /\$(?:\{([\w-]+)\}|([\w-]+))/g;
+
+    return inputString.replace(regex, (match, bracedName, plainName) => {
+        // Determine which capture group caught the variable name
+        const varName = bracedName || plainName;
+
+        // Look up the value in the environment object
+        // If found, return it. If not, keep the original match text (or use '')
+        return varName in env ? env[varName] : match;
+    });
 }
 
 
