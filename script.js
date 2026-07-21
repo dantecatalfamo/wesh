@@ -383,7 +383,7 @@ class Shell {
         const appendOutput = s => this.output += s;
         const source = read(this.uid, this.gid, resolvePath(this.cwd, path));
         const program = compile(source, path);
-        const ctx = makeContext(shell, argv, null, appendOutput, appendOutput);
+        const ctx = makeContext(shell, argv, () => null, appendOutput, appendOutput);
         const exitCode = program(ctx);
         return typeof exitCode === "number" ? exitCode : 0;
     }
@@ -426,6 +426,7 @@ function makeContext(shell, argv, stdin, stdout, stderr) {
         print: (s) => { stdout(String(s)) },
         println: (s) => { stdout(String(s)+"\n") },
         eprintln: (s) => { stderr(String(s)+"\n") },
+        gets: () => stdin(),
 
         readFile: (path) => { read(shell.uid, shell.gid, resolvePath(this.cwd, path)) },
         writeFile: (path, contents) => { write(shell.uid, shell.gid, contents, resolvePath(this.cwd, path)) },
