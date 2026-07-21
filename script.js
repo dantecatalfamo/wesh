@@ -129,7 +129,8 @@ function readDir(inode) {
     return JSON.parse(inode.contents)
 }
 
-function statDir(inode) {
+function statDir(uid, gid, path, at) {
+    const inode = getInode(uid, gid, path, at);
     const dir = readDir(inode);
     const entries = dir.map(e => {
         const stat = structuredClone(getInodeKV(e.id));
@@ -137,6 +138,13 @@ function statDir(inode) {
         return [e.name, stat]
     });
     return Object.fromEntries(entries);
+}
+
+function stat(uid, gid, path, at) {
+    const inode = getInode(uid, gid, path, at);
+    const s = structuredClone(inode);
+    delete s.contents;
+    return s;
 }
 
 function writeDir(inode, dirEnts) {
@@ -197,7 +205,6 @@ function write(uid, gid, contents, path, at) {
     inode.contents = contents;
 }
 
-// should check the perms all the way down?
 function read(uid, gid, path, at) {
     const inode = getInode(uid, gid, path, at);
     if (inode.type !== typeReg) {
@@ -213,8 +220,6 @@ function read(uid, gid, path, at) {
 function create(uid, gid, mode, path, at) {
     const base = basename(path);
     const dir = dirname(path);
-    console.log("create base", base);
-    console.log("create dir", dir);
     const parentInode = getInode(uid, gid, dir, at);
     if (!permCheck(uid, gid, parentInode, new Perm(false, true, false))) {
         throw `permission denied: cannot write to dir ${path}`
@@ -271,7 +276,9 @@ function resolvePathDots(path) {
 /// Shell
 class Shell {
     constructor() {
-        this.env = {};
+        this.env = {
+            PATH: "/bin",
+        };
         this.uid = 0;
         this.gid = 0;
         this.cwd = "/";
@@ -330,10 +337,32 @@ class Shell {
         }
         case "dir": {
             const path = resolvePath(this.cwd, this.args[1]);
-            this.output = statDir(getInode(this.uid, this.gid, path))
+            this.output = statDir(this.uid, this.gid, path);
+            break;
+        }
+        case "stat": {
+            const path = resolvePath(this.cwd, this.args[1]);
+            this.output = stat(this.uid, this.gid, path);
             break;
         }
         default:
+            {
+                if (this.args.length === 0) { return }
+                const paths = this.env.PATH.split(":");
+                const prog = this.args[0];
+                for (const path of paths) {
+                    const files = statDir(this.uid, this.gid, path);
+                    for (const file in files) {
+                        if (file === prog && files[file].type === typeReg) {
+                            if (!permCheck(this.uid, this.gid, files[file], new Perm(false, false, true))) {
+                                throw `permission denied: ${prog}`
+                            } else {
+                                this.env["?"] = this.exec(resolvePath(path, file), this.args);
+                            }
+                        }
+                    }
+                }
+            }
             throw `command not found "${this.args[0]}"`;
             break;
         }
@@ -346,6 +375,14 @@ class Shell {
         }
         this.cwd = newPath;
         this.at = inode.id;
+    }
+    exec(path, argv) {
+        const appendOutput = s => this.output += s;
+        const source = read(this.uid, this.gid, resolvePath(this.cwd, path));
+        const program = compile(source, path);
+        const ctx = makeContext(shell, argv, null, appendOutput, appendOutput);
+        const exitCode = program(ctx);
+        return typeof exitCode === "number" ? exitCode : 0;
     }
 }
 
@@ -363,7 +400,7 @@ function splitToArgs(input, env) {
 
 function substituteShellVariables(inputString, env) {
     // Regex to match either ${VAR} or $VAR
-    const regex = /\$(?:\{([\w-]+)\}|([\w-]+))/g;
+    const regex = /\$(?:\{([\w-?]+)\}|([\w-?]+))/g;
 
     return inputString.replace(regex, (match, bracedName, plainName) => {
         // Determine which capture group caught the variable name
@@ -389,26 +426,16 @@ function makeContext(shell, argv, stdin, stdout, stderr) {
 
         readFile: (path) => { read(shell.uid, shell.gid, resolvePath(this.cwd, path)) },
         writeFile: (path, contents) => { write(shell.uid, shell.gid, contents, resolvePath(this.cwd, path)) },
-
     }
 }
 
 function compile(source, name) {
     try {
-        new Function("ctx", `"use strict"\n${source}`);
+        return new Function("ctx", `"use strict"\n${source}`);
     } catch (e) {
-        throw `${filename}: syntax error: ${e.message}`;
+        throw `${name}: syntax error: ${e.message}`;
     }
 }
-
-function exec(shell, path, argv) {
-    const source = read(shell.uid, shell.gid, resolvePath(shell.cwd, path));
-    const program = compileProgram(source, path);
-    const ctx = makeContext(shell, argv);
-    const exitCode = program(ctx);
-    return typeof exitCode === "number" ? exitCode : 0;
-}
-
 
 console.log(getInode(0, 0, "/"));
 mkdir(0, 0, defaultMode, "/hee");
@@ -420,6 +447,9 @@ console.log(getInode(0, 0, "/"));
 console.log(mockKV);
 write(0, 0, "test", "/frog");
 console.log(read(0, 0, "/frog"));
+mkdir(0, 0, defaultMode, "/bin");
+create(0, 0, defaultMode, "/bin/hello");
+write(0, 0, "ctx.print('hello, world!')", "/bin/hello");
 
 const shell = new Shell();
 
