@@ -416,21 +416,41 @@ function substituteShellVariables(inputString, env) {
 }
 
 function makeContext(shell, argv, stdin, stdout, stderr) {
-    return {
-        argv,
-        env: {...shell.env},
-        cwd: shell.cwd,
-        uid: shell.uid,
-        gid: shell.gid,
+    const uid = shell.uid;
+    const gid = shell.gid;
 
-        print: (s) => { stdout(String(s)) },
-        println: (s) => { stdout(String(s)+"\n") },
-        eprintln: (s) => { stderr(String(s)+"\n") },
+    const ctx = {
+        argv,
+        env: { ...shell.env },
+        cwd: shell.cwd,
+
+        get uid() { return uid; },
+        get gid() { return gid; },
+
+        print: (s) => stdout(String(s)),
+        println: (s) => stdout(String(s) + "\n"),
+        eprintln: (s) => stderr(String(s) + "\n"),
         gets: () => stdin(),
 
-        readFile: (path) => { read(shell.uid, shell.gid, resolvePath(this.cwd, path)) },
-        writeFile: (path, contents) => { write(shell.uid, shell.gid, contents, resolvePath(this.cwd, path)) },
+        readFile: (path) => read(shell.uid, shell.gid, resolvePath(ctx.cwd, path)),
+        writeFile: (path, contents) => write(shell.uid, shell.gid, contents, resolvePath(ctx.cwd, path)),
+        stat: (path) => stat(shell.uid, shell.gid, resolvePath(ctx.cwd, path)),
+        mkdir: (path) => mkdir(shell.uid, shell.gid, resolvePath(ctx.cwd, path)),
+        statDir: (path) => statDir(shell.uid, shell.gid, resolvePath(ctx.cwd, path)),
+        chdir: (path) => {
+            const target = resolvePath(ctx.cwd, path);
+            const inode = getInode(uid, gid, target);
+            if (inode.type !== typeDir) {
+                throw `chdir: not a directory: ${path}`;
+            }
+            if (!permCheck(uid, gid, inode, new Perm(false, false, true))) {
+                throw `chdir: permission denied: ${path}`;
+            }
+            ctx.cwd = target;
+        },
     }
+
+    return ctx;
 }
 
 function compile(source, name) {
