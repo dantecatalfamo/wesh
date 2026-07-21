@@ -78,14 +78,13 @@ function getInode(uid, gid, path, at) {
 
     const sp = splitPath(path);
     let inode = root;
-    for (const nameIdx in sp) {
-        const name = sp[nameIdx];
-        const last = nameIdx === sp.length-1;
+    for (let i = 0; i<sp.length; i++) {
+        const name = sp[i];
 
-        if (last || !permCheck(uid, gid, inode, new Perm(true, false, true))) {
+        if (!permCheck(uid, gid, inode, new Perm(true, false, true))) {
             throw `cannot read/execute at path ${path}`;
         }
-        if (last || inode.type != typeDir) {
+        if (inode.type != typeDir) {
             throw `cannot read dir ${path}, not a directory. type ${root.type}`;
         }
 
@@ -246,7 +245,7 @@ function resolvePath(cwd, path) {
 function resolvePathDots(path) {
     console.log("resolvePathDots", path);
     const first = path[0] === "/" ? "/" : "";
-    const sp = splitPath(path);
+    const sp = splitPath(path).filter(e => e !== ".");
     while (sp.includes("..")) {
         const dd = sp.indexOf("..");
         if (dd !== 0) {
@@ -255,7 +254,7 @@ function resolvePathDots(path) {
             sp.shift();
         }
     }
-    return first+sp.filter(e => e !== ".").join("/");
+    return first+sp.join("/");
 }
 
 /// Shell
@@ -358,6 +357,40 @@ function substituteShellVariables(inputString, env) {
         // If found, return it. If not, keep the original match text (or use '')
         return varName in env ? env[varName] : match;
     });
+}
+
+function makeContext(shell, argv, stdin, stdout, stderr) {
+    return {
+        argv,
+        env: {...shell.env},
+        cwd: shell.cwd,
+        uid: shell.uid,
+        gid: shell.gid,
+
+        print: (s) => { stdout(String(s)) },
+        println: (s) => { stdout(String(s)+"\n") },
+        eprintln: (s) => { stderr(String(s)+"\n") },
+
+        readFile: (path) => { read(shell.uid, shell.gid, resolvePath(this.cwd, path)) },
+        writeFile: (path, contents) => { write(shell.uid, shell.gid, contents, resolvePath(this.cwd, path)) },
+
+    }
+}
+
+function compile(source, name) {
+    try {
+        new Function("ctx", `"use strict"\n${source}`);
+    } else (e) {
+        throw `${filename}: syntax error: ${e.message}`;
+    }
+}
+
+function exec(shell, path, argv) {
+    const source = read(shell.uid, shell.gid, resolvePath(shell.cwd, path));
+    const program = compileProgram(source, path);
+    const ctx = makeContext(shell, argv);
+    const exitCode = program(ctx);
+    return typeof exitCode === "number" ? exitCode : 0;
 }
 
 
