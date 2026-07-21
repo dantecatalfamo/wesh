@@ -129,6 +129,16 @@ function readDir(inode) {
     return JSON.parse(inode.contents)
 }
 
+function statDir(inode) {
+    const dir = readDir(inode);
+    const entries = dir.map(e => {
+        const stat = structuredClone(getInodeKV(e.id));
+        delete stat.contents;
+        return [e.name, stat]
+    });
+    return Object.fromEntries(entries);
+}
+
 function writeDir(inode, dirEnts) {
     inode.contents = JSON.stringify(dirEnts)
 }
@@ -187,6 +197,7 @@ function write(uid, gid, contents, path, at) {
     inode.contents = contents;
 }
 
+// should check the perms all the way down?
 function read(uid, gid, path, at) {
     const inode = getInode(uid, gid, path, at);
     if (inode.type !== typeReg) {
@@ -317,6 +328,11 @@ class Shell {
             this.output = path;
             break;
         }
+        case "dir": {
+            const path = resolvePath(this.cwd, this.args[1]);
+            this.output = statDir(getInode(this.uid, this.gid, path))
+            break;
+        }
         default:
             throw `command not found "${this.args[0]}"`;
             break;
@@ -380,7 +396,7 @@ function makeContext(shell, argv, stdin, stdout, stderr) {
 function compile(source, name) {
     try {
         new Function("ctx", `"use strict"\n${source}`);
-    } else (e) {
+    } catch (e) {
         throw `${filename}: syntax error: ${e.message}`;
     }
 }
