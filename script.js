@@ -345,26 +345,29 @@ class Shell {
             this.output = stat(this.uid, this.gid, path);
             break;
         }
-        default:
-            {
-                if (this.args.length === 0) { return }
-                const paths = this.env.PATH.split(":");
-                const prog = this.args[0];
-                for (const path of paths) {
-                    const files = statDir(this.uid, this.gid, path);
-                    for (const file in files) {
-                        if (file === prog && files[file].type === typeReg) {
-                            if (!permCheck(this.uid, this.gid, files[file], new Perm(false, false, true))) {
-                                throw `permission denied: ${prog}`
-                            } else {
-                                this.env["?"] = this.exec(resolvePath(path, file), this.args);
-                            }
+        default: {
+            if (this.args.length === 0) { return }
+            const paths = this.env.PATH.split(":");
+            const prog = this.args[0];
+            let found = false;
+            for (const path of paths) {
+                const files = statDir(this.uid, this.gid, path);
+                for (const file in files) {
+                    if (file === prog && files[file].type === typeReg) {
+                        found = true;
+                        if (!permCheck(this.uid, this.gid, files[file], new Perm(false, false, true))) {
+                            throw `permission denied: ${prog}`
+                        } else {
+                            this.env["?"] = this.exec(resolvePath(path, file), this.args);
                         }
                     }
                 }
             }
-            throw `command not found "${this.args[0]}"`;
+            if (!found) {
+                throw `command not found "${prog}"`;
+            }
             break;
+        }
         }
     }
     cd(path) {
