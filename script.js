@@ -133,9 +133,11 @@ function statDir(uid, gid, path, at) {
     const inode = getInode(uid, gid, path, at);
     const dir = readDir(inode);
     const entries = dir.map(e => {
-        const stat = structuredClone(getInodeKV(e.id));
-        delete stat.contents;
-        return [e.name, stat]
+        const stat = getInodeKV(e.id);
+        const clone = structuredClone(stat);
+        clone.size = stat.size;
+        delete clone.contents;
+        return [e.name, clone]
     });
     return Object.fromEntries(entries);
 }
@@ -259,7 +261,6 @@ function resolvePath(cwd, path) {
 }
 
 function resolvePathDots(path) {
-    console.log("resolvePathDots", path);
     const first = path[0] === "/" ? "/" : "";
     const sp = splitPath(path).filter(e => e !== ".");
     while (sp.includes("..")) {
@@ -298,15 +299,16 @@ class Shell {
                 this.output += `${e}=${this.env[e]}\n`;
             }
             break;
-        case "ls": {
-            const inode = getInode(this.uid, this.gid, this.cwd);
-            const dir = readDir(inode);
-            for (const f of dir) {
-                const i = getInodeKV(f.id);
-                this.output += `${i.type === typeDir ? "d" : " "}${i.mode.toString()} ${i.uid} ${i.gid} ${i.size()} ${f.name}\n`;
-            }
-            break;
-        }
+        // case "ls": {
+        //     const path = resolvePath(this.cwd, this.args.lenght > 1 ? this.args[1] : ".");
+        //     const inode = getInode(this.uid, this.gid, path);
+        //     const dir = readDir(inode);
+        //     for (const f of dir) {
+        //         const i = getInodeKV(f.id);
+        //         this.output += `${i.type === typeDir ? "d" : " "}${i.mode.toString()} ${i.uid} ${i.gid} ${i.size()} ${f.name}\n`;
+        //     }
+        //     break;
+        // }
         case "cd": {
             const path = this.args[1];
             this.cd(path);
@@ -432,13 +434,14 @@ function makeContext(shell, argv, stdin, stdout, stderr) {
         eprintln: (s) => stderr(String(s) + "\n"),
         gets: () => stdin(),
 
-        readFile: (path) => read(shell.uid, shell.gid, resolvePath(ctx.cwd, path)),
-        writeFile: (path, contents) => write(shell.uid, shell.gid, contents, resolvePath(ctx.cwd, path)),
-        stat: (path) => stat(shell.uid, shell.gid, resolvePath(ctx.cwd, path)),
-        mkdir: (path) => mkdir(shell.uid, shell.gid, resolvePath(ctx.cwd, path)),
-        statDir: (path) => statDir(shell.uid, shell.gid, resolvePath(ctx.cwd, path)),
+        resolvePath: (path) => resolvePath(ctx.cwd, path),
+        readFile: (path) => read(shell.uid, shell.gid, ctx.resolvePath(path)),
+        writeFile: (path, contents) => write(shell.uid, shell.gid, contents, ctx.resolvePath(path)),
+        stat: (path) => stat(shell.uid, shell.gid, ctx.resolvePath(path)),
+        mkdir: (path) => mkdir(shell.uid, shell.gid, ctx.resolvePath(path)),
+        statDir: (path) => statDir(shell.uid, shell.gid, ctx.resolvePath(path)),
         chdir: (path) => {
-            const target = resolvePath(ctx.cwd, path);
+            const target = ctx.resolvePath(path);
             const inode = getInode(uid, gid, target);
             if (inode.type !== typeDir) {
                 throw `chdir: not a directory: ${path}`;
@@ -471,9 +474,25 @@ console.log(getInode(0, 0, "/"));
 console.log(mockKV);
 write(0, 0, "test", "/frog");
 console.log(read(0, 0, "/frog"));
+
 mkdir(0, 0, defaultMode, "/bin");
 create(0, 0, defaultMode, "/bin/hello");
 write(0, 0, "ctx.print('hello, world!')", "/bin/hello");
+create(0, 0, defaultMode, "/bin/ls");
+write(0, 0, `
+const path = ctx.argv.length > 1 ? ctx.argv[1] : ".";
+const dir = ctx.statDir(path);
+for (const f in dir) {
+    const e = dir[f];
+    // ctx.println(JSON.stringify(e));
+    ctx.println(\`\${e.type === '${typeDir}' ? "d" : " "}\${e.mode.toString()} \${e.uid} \${e.gid} \${e.size} \${f.name}\`);
+}
+`, "/bin/ls");
+create(0, 0, defaultMode, "/bin/cat");
+write(0, 0, `ctx.println(ctx.readFile(ctx.argv[1]))`, "/bin/cat");
+
+
+
 
 const shell = new Shell();
 
